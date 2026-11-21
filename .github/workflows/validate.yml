@@ -1,0 +1,28 @@
+# Checks every change before it can reach the cluster: each overlay must build with
+# kustomize, and the result must be valid Kubernetes YAML (kubeconform, strict).
+name: validate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate (kustomize + kubeconform)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and validate each overlay
+        run: |
+          for overlay in overlays/*/; do
+            echo "::group::$overlay"
+            kubectl kustomize "$overlay" | tee rendered.yaml
+            docker run --rm -i ghcr.io/yannh/kubeconform:v0.8.0 -strict -summary - < rendered.yaml
+            echo "::endgroup::"
+          done

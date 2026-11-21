@@ -1,0 +1,16 @@
+# STAGING: deployed automatically by Argo CD when this file changes on main.
+# To deploy a new version: change newTag in a PR, merge.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: jotter-staging
+resources:
+  - ../../base
+images:
+  - name: ghcr.io/sarabesh/jotter
+    newTag: "0.4.0"
+patches:
+  - target: { kind: Service, name: jotter }
+    patch: |-
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30081 # http://localhost:8081

@@ -1,0 +1,13 @@
+# A disk for the SQLite file, so ideas survive pod restarts and upgrades.
+# No storageClassName = the cluster default (kind: local-path "standard").
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jotter-data
+  labels:
+    app.kubernetes.io/name: jotter
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi

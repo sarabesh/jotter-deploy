@@ -1,0 +1,24 @@
+# Tells Argo CD: keep overlays/staging (main branch) running in namespace jotter-staging.
+# Apply once:  kubectl apply -f argocd/
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: jotter-staging
+  namespace: argocd # Applications live in Argo CD's own namespace
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io/foreground # deleting the app also deletes what it deployed
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/sarabesh/jotter-deploy.git
+    targetRevision: main
+    path: overlays/staging
+  destination:
+    server: https://kubernetes.default.svc # this same cluster
+    namespace: jotter-staging
+  syncPolicy:
+    automated:
+      prune: true # removed from git -> removed from the cluster
+      selfHeal: true # changed by hand in the cluster -> put back to what git says
+    syncOptions:
+      - CreateNamespace=true

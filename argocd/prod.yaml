@@ -1,0 +1,21 @@
+# Tells Argo CD about prod — but no automated sync: Argo shows the difference
+# ("OutOfSync") and a human clicks Sync. That's the manual gate for production.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: jotter-prod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io/foreground
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/sarabesh/jotter-deploy.git
+    targetRevision: main
+    path: overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: jotter-prod
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true

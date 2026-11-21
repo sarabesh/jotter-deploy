@@ -1,0 +1,17 @@
+# A fixed address for the pod. NodePort = reachable on a port of the cluster node;
+# the kind cluster maps node ports 30081/30082 to localhost:8081/8082.
+# The nodePort number itself is added by each overlay.
+apiVersion: v1
+kind: Service
+metadata:
+  name: jotter
+  labels:
+    app.kubernetes.io/name: jotter
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: jotter
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

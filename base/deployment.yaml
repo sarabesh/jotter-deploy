@@ -1,0 +1,65 @@
+# The jotter pod: what to run and how to keep it healthy and locked down.
+# Same in every environment; overlays only change the image tag and the port.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jotter
+  labels:
+    app.kubernetes.io/name: jotter
+spec:
+  replicas: 1 # SQLite = one file on one disk: never two pods writing it
+  strategy:
+    type: Recreate # on upgrade: stop the old pod first, then start the new one
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jotter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: jotter
+    spec:
+      automountServiceAccountToken: false # the app never talks to the Kubernetes API
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001 # the "app" user from the Dockerfile
+        fsGroup: 10001 # makes the /data volume writable for that user
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: jotter
+          image: ghcr.io/sarabesh/jotter # the tag (0.4.0, …) is set in each overlay
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: JOTTER_DB
+              value: /data/jotter.db
+          # /health (J-1) answers 200 when the app can reach its database.
+          startupProbe: # give it up to 60s to boot before the other probes start
+            httpGet: { path: /health, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe: # only send visitors when it answers
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          livenessProbe: # restart it if it stops answering
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true # only /data and /tmp are writable
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: jotter-data
+        - name: tmp
+          emptyDir: {}

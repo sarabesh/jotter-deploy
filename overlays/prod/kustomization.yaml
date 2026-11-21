@@ -1,0 +1,16 @@
+# PROD: Argo CD shows "OutOfSync" when this changes; you click Sync to deploy.
+# Promote a version only after it ran fine in staging.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: jotter-prod
+resources:
+  - ../../base
+images:
+  - name: ghcr.io/sarabesh/jotter
+    newTag: "0.4.0"
+patches:
+  - target: { kind: Service, name: jotter }
+    patch: |-
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30082 # http://localhost:8082
