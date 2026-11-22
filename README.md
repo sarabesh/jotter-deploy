@@ -21,7 +21,7 @@ See the final YAML for an environment: `kubectl kustomize overlays/staging`.
 ## Deploy a new version
 1. jotter's release workflow publishes `ghcr.io/sarabesh/jotter:X.Y.Z` (signed), then its `deploy-staging` job **commits** `overlays/staging/kustomization.yaml` → `newTag: "X.Y.Z"` straight to `main` here (`deploy(staging): jotter X.Y.Z`, pushed with this repo's deploy key).
 2. Argo CD syncs staging (within ~3 min, or click **Refresh**). Check http://localhost:8081/health shows `X.Y.Z`.
-3. **Promote:** `promote.yml` sees the staging change and opens PR `deploy(prod): jotter X.Y.Z` (branch `promote/prod-X.Y.Z`, prod overlay set with `kustomize edit` and checked with kustomize + kubeconform, result posted on the PR as `validate (kustomize + kubeconform)`; older unmerged promote PRs are closed as superseded). Check staging, review, merge → **Sync** `jotter-prod` in the Argo CD UI. To open it for whatever staging runs now: Actions → promote → **Run workflow**.
+3. **Promote:** `promote.yml` sees the staging change and opens PR `deploy(prod): jotter X.Y.Z` (branch `promote/prod-X.Y.Z`, prod overlay set with `kustomize edit`; older unmerged promote PRs are closed as superseded). `validate` checks it on the PR — GitHub asks you to **Approve and run** it because the PR is from `github-actions[bot]`. Check staging, review, merge → **Sync** `jotter-prod` in the Argo CD UI. To open it for whatever staging runs now: Actions → promote → **Run workflow**.
 
 The staging bump can also be done by hand the same way (PR to `overlays/staging/`), e.g. to roll back.
 
