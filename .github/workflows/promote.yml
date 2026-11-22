@@ -3,7 +3,7 @@
 #     -> branch promote/prod-X.Y.Z with overlays/prod set to X.Y.Z (kustomize edit)
 #     -> PR "deploy(prod): jotter X.Y.Z" -> validate.yml checks it (GitHub asks you to
 #        "Approve and run" because the PR is from github-actions[bot]) -> review, merge
-#     -> Argo CD marks jotter-prod OutOfSync -> you click Sync
+#     -> Argo CD auto-syncs prod
 # Uses this repo's own GITHUB_TOKEN (no keys). Needs: Settings -> Actions -> General ->
 # "Allow GitHub Actions to create and approve pull requests".
 name: promote
@@ -90,7 +90,7 @@ jobs:
                 "Moves **prod** from \`${PROD}\` to \`${VERSION}\`, the version staging runs now." \
                 "" \
                 "Before merging: click **Approve and run** for the validate check, and check staging - http://localhost:8081/health shows \`${VERSION}\`." \
-                "After merging: Argo CD marks \`jotter-prod\` OutOfSync - click **Sync**." \
+                "After merging: Argo CD deploys prod automatically." \
                 "" \
                 "Opened by the promote workflow after commit ${GITHUB_SHA}.")"
           fi
