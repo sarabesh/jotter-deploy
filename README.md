@@ -46,6 +46,6 @@ ssh-keygen -t ed25519 -N "" -C "jotter release -> jotter-deploy" -f release-push
 - Delete both local files afterwards. If this repo gets a ruleset on `main`, add **Deploy keys** to its bypass list so the staging commit isn't blocked.
 
 ## Rules
-- Only image tags that jotter's `release.yml` published. Later (CD-2) Kyverno refuses images not signed by `sarabesh/Jotter/.github/workflows/release.yml@refs/heads/main`.
+- Only image tags that jotter's `release.yml` published. The cluster's Kyverno policy (platform config, applied by hand, deliberately *not* in this repo so the release pipeline's deploy key can't change it) only lets jotter pods run with a cosign signature + signed SBOM from `sarabesh/Jotter/.github/workflows/release.yml@refs/heads/main`.
 - jotter keeps SQLite on a 1 GiB volume: **1 replica only**, `Recreate` upgrades (a few seconds of downtime).
 - Data lives as long as the cluster: `kind delete cluster` deletes the ideas.
