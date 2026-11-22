@@ -18,11 +18,11 @@ argocd/                    the two Argo CD Applications (applied once by hand)
 See the final YAML for an environment: `kubectl kustomize overlays/staging`.
 
 ## Deploy a new version
-1. jotter's release workflow publishes `ghcr.io/sarabesh/jotter:X.Y.Z` (signed).
-2. PR here: `overlays/staging/kustomization.yaml` → `newTag: "X.Y.Z"`, title `deploy(staging): jotter X.Y.Z`.
-3. `validate` passes → merge → Argo CD syncs staging (within ~3 min, or click **Refresh**).
-4. Check http://localhost:8081/health shows `X.Y.Z`.
-5. Same PR for `overlays/prod/`, merge, then **Sync** `jotter-prod` in the Argo CD UI.
+1. jotter's release workflow publishes `ghcr.io/sarabesh/jotter:X.Y.Z` (signed), then its `deploy-staging` job **commits** `overlays/staging/kustomization.yaml` → `newTag: "X.Y.Z"` straight to `main` here (`deploy(staging): jotter X.Y.Z`, pushed with this repo's deploy key).
+2. Argo CD syncs staging (within ~3 min, or click **Refresh**). Check http://localhost:8081/health shows `X.Y.Z`.
+3. **Promote by hand:** PR changing `overlays/prod/kustomization.yaml` to the same tag, title `deploy(prod): jotter X.Y.Z` → `validate` passes → merge → **Sync** `jotter-prod` in the Argo CD UI.
+
+The staging bump can also be done by hand the same way (PR to `overlays/staging/`), e.g. to roll back.
 
 **Roll back:** revert the PR. Argo CD puts the previous version back.
 
@@ -32,6 +32,14 @@ Needs the local kind cluster `jotter` with Argo CD (see `coding-devops-agent/pla
 kubectl apply -f argocd/          # register the two Applications with Argo CD
 ```
 Argo CD UI: http://localhost:8080 (user `admin`; password: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}"`, base64-decoded).
+
+### Deploy key for jotter's release workflow (one-time)
+```bash
+ssh-keygen -t ed25519 -N "" -C "jotter release -> jotter-deploy" -f release-push-key
+```
+- `release-push-key.pub` (public) → **this repo** → Settings → Deploy keys → Add, tick **Allow write access**.
+- `release-push-key` (private) → **Jotter repo** → Settings → Secrets and variables → Actions → New secret `JOTTER_DEPLOY_KEY`.
+- Delete both local files afterwards. If this repo gets a ruleset on `main`, add **Deploy keys** to its bypass list so the staging commit isn't blocked.
 
 ## Rules
 - Only image tags that jotter's `release.yml` published. Later (CD-2) Kyverno refuses images not signed by `sarabesh/Jotter/.github/workflows/release.yml@refs/heads/main`.
