@@ -1,5 +1,5 @@
-# Tells Argo CD about prod — but no automated sync: Argo shows the difference
-# ("OutOfSync") and a human clicks Sync. That's the manual gate for production.
+# Tells Argo CD: keep overlays/prod (main branch) running in namespace jotter-prod.
+# Auto-sync: the human gate is merging the "deploy(prod): …" PR — once it's on main, it deploys.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -17,5 +17,8 @@ spec:
     server: https://kubernetes.default.svc
     namespace: jotter-prod
   syncPolicy:
+    automated:
+      prune: true # removed from git -> removed from the cluster
+      selfHeal: true # changed by hand in the cluster -> put back to what git says
     syncOptions:
       - CreateNamespace=true
