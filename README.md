@@ -14,13 +14,14 @@ overlays/staging/          base + image tag + namespace + port 30081
 overlays/prod/             base + image tag + namespace + port 30082
 argocd/                    the two Argo CD Applications (applied once by hand)
 .github/workflows/         validate: kustomize build + kubeconform on every PR
+                           promote: after a staging bump, open the prod PR
 ```
 See the final YAML for an environment: `kubectl kustomize overlays/staging`.
 
 ## Deploy a new version
 1. jotter's release workflow publishes `ghcr.io/sarabesh/jotter:X.Y.Z` (signed), then its `deploy-staging` job **commits** `overlays/staging/kustomization.yaml` → `newTag: "X.Y.Z"` straight to `main` here (`deploy(staging): jotter X.Y.Z`, pushed with this repo's deploy key).
 2. Argo CD syncs staging (within ~3 min, or click **Refresh**). Check http://localhost:8081/health shows `X.Y.Z`.
-3. **Promote by hand:** PR changing `overlays/prod/kustomization.yaml` to the same tag, title `deploy(prod): jotter X.Y.Z` → `validate` passes → merge → **Sync** `jotter-prod` in the Argo CD UI.
+3. **Promote:** `promote.yml` sees the staging change and opens PR `deploy(prod): jotter X.Y.Z` (branch `promote/prod-X.Y.Z`, prod overlay set with `kustomize edit` and checked with kustomize + kubeconform, result posted on the PR as `validate (kustomize + kubeconform)`; older unmerged promote PRs are closed as superseded). Check staging, review, merge → **Sync** `jotter-prod` in the Argo CD UI. To open it for whatever staging runs now: Actions → promote → **Run workflow**.
 
 The staging bump can also be done by hand the same way (PR to `overlays/staging/`), e.g. to roll back.
 
@@ -32,6 +33,9 @@ Needs the local kind cluster `jotter` with Argo CD (see `coding-devops-agent/pla
 kubectl apply -f argocd/          # register the two Applications with Argo CD
 ```
 Argo CD UI: http://localhost:8080 (user `admin`; password: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}"`, base64-decoded).
+
+### Let workflows open PRs (one-time, for promote.yml)
+Settings → Actions → General → Workflow permissions → tick **Allow GitHub Actions to create and approve pull requests**.
 
 ### Deploy key for jotter's release workflow (one-time)
 ```bash

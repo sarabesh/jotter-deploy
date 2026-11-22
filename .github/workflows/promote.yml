@@ -1,0 +1,116 @@
+# After staging gets a new version, open a PR that moves prod to the same version.
+#   staging bump lands on main (pushed by jotter's release workflow)
+#     -> branch promote/prod-X.Y.Z with overlays/prod set to X.Y.Z (kustomize edit)
+#     -> PR "deploy(prod): jotter X.Y.Z" -> you check staging, review, merge
+#     -> Argo CD marks jotter-prod OutOfSync -> you click Sync
+# Uses this repo's own GITHUB_TOKEN (no keys). Needs: Settings -> Actions -> General ->
+# "Allow GitHub Actions to create and approve pull requests".
+name: promote
+
+on:
+  push:
+    branches: [main]
+    paths: [overlays/staging/**]
+  workflow_dispatch: # "Run workflow" button: open the PR for whatever staging runs now
+
+permissions: {}
+
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+jobs:
+  open-prod-pr:
+    name: open prod PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # push the promote/prod-* branch
+      pull-requests: write # open the PR, close superseded ones
+      statuses: write # report the checks below onto the PR's commit
+    env:
+      IMAGE: ghcr.io/sarabesh/jotter
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # yq and kustomize are preinstalled on GitHub's Ubuntu runner.
+      - name: Read staging and prod versions
+        id: tags
+        run: |
+          read_tag() { yq '.images[] | select(.name == strenv(IMAGE)) | .newTag' "overlays/$1/kustomization.yaml"; }
+          staging=$(read_tag staging)
+          prod=$(read_tag prod)
+          echo "staging=$staging  prod=$prod"
+          if [ -z "$staging" ] || [ "$staging" = "null" ]; then echo "no staging tag found"; exit 1; fi
+          echo "staging=$staging" >> "$GITHUB_OUTPUT"
+          echo "prod=$prod" >> "$GITHUB_OUTPUT"
+
+      - name: Prod already runs the staging version
+        if: steps.tags.outputs.staging == steps.tags.outputs.prod
+        run: echo "prod already on ${{ steps.tags.outputs.staging }}; no PR needed"
+
+      - name: Set prod version on a promote branch
+        id: bump
+        if: steps.tags.outputs.staging != steps.tags.outputs.prod
+        env:
+          VERSION: ${{ steps.tags.outputs.staging }}
+        run: |
+          branch="promote/prod-${VERSION}"
+          git switch -c "$branch"
+          (cd overlays/prod && kustomize edit set image "${IMAGE}:${VERSION}")
+          # same checks as validate.yml, so a broken change never becomes a PR
+          kustomize build overlays/prod > rendered.yaml
+          grep -q "image: ${IMAGE}:${VERSION}" rendered.yaml || { echo "prod does not render ${VERSION}"; exit 1; }
+          docker run --rm -i ghcr.io/yannh/kubeconform:v0.8.0 -strict -summary - < rendered.yaml
+          rm rendered.yaml
+          git diff
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "deploy(prod): jotter ${VERSION}" -m "Promotes the version staging runs (from ${GITHUB_SHA})."
+          git push --force origin "$branch" # re-runs just refresh the same branch
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # The checks above ran on this branch's commit, but this run belongs to the main commit,
+      # so the PR wouldn't show them. Post the result on the PR's commit under validate's name
+      # (no second run needed; also satisfies a ruleset requiring that check, source "any").
+      - name: Report the check on the PR commit
+        if: steps.bump.outputs.sha
+        env:
+          SHA: ${{ steps.bump.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+            -f state=success \
+            -f context="validate (kustomize + kubeconform)" \
+            -f description="prod overlay rendered + kubeconform-checked by promote" \
+            -f target_url="$RUN_URL"
+
+      - name: Open the PR, close superseded ones
+        if: steps.bump.outputs.branch
+        env:
+          VERSION: ${{ steps.tags.outputs.staging }}
+          PROD: ${{ steps.tags.outputs.prod }}
+          BRANCH: ${{ steps.bump.outputs.branch }}
+        run: |
+          # an older promote PR nobody merged (e.g. 0.4.1 when 0.4.2 arrives) is now stale
+          for n in $(gh pr list --state open --json number,headRefName \
+                       --jq '.[] | select(.headRefName | startswith("promote/prod-")) | select(.headRefName != $ENV.BRANCH) | .number'); do
+            gh pr close "$n" --delete-branch --comment "Superseded by jotter ${VERSION}."
+          done
+
+          if [ -n "$(gh pr list --state open --head "$BRANCH" --json number --jq '.[].number')" ]; then
+            echo "PR for $BRANCH already open"
+          else
+            gh pr create --base main --head "$BRANCH" \
+              --title "deploy(prod): jotter ${VERSION}" \
+              --body "$(printf '%s\n' \
+                "Moves **prod** from \`${PROD}\` to \`${VERSION}\`, the version staging runs now." \
+                "" \
+                "Before merging: check staging - http://localhost:8081 and http://localhost:8081/health shows \`${VERSION}\`." \
+                "After merging: Argo CD marks \`jotter-prod\` OutOfSync - click **Sync**." \
+                "" \
+                "Opened by the promote workflow after commit ${GITHUB_SHA}.")"
+          fi
+          echo "Opened/updated PR: prod -> ${VERSION}" >> "$GITHUB_STEP_SUMMARY"
